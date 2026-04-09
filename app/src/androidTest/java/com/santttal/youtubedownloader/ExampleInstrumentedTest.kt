@@ -1,4 +1,4 @@
-package com.santttal.youtubedownloader2
+package com.santttal.youtubedownloader
 
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -19,6 +19,6 @@ class ExampleInstrumentedTest {
     fun useAppContext() {
         // Context of the app under test.
         val appContext = InstrumentationRegistry.getInstrumentation().targetContext
-        assertEquals("com.santttal.youtubedownloader2", appContext.packageName)
+        assertEquals("com.santttal.youtubedownloader", appContext.packageName)
     }
 }

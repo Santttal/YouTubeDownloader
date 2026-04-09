@@ -1,4 +1,4 @@
-package com.santttal.youtubedownloader2
+package com.santttal.youtubedownloader
 
 import org.junit.Test
 
