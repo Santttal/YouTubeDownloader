@@ -12,6 +12,5 @@ val appModule = module {
     single { DownloadRepository(androidContext()) }
     factory { VideoInfoUseCase(get()) }
     factory { StartDownloadUseCase(androidContext()) }
-    // TODO(02-04): replace with viewModel { DownloadViewModel(get(), get()) } after Plan 04 updates ViewModel
-    viewModel { DownloadViewModel() }
+    viewModel { DownloadViewModel(get(), get()) }
 }
