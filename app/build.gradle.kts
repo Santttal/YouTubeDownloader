@@ -3,7 +3,7 @@ plugins {
 }
 
 android {
-    namespace = "com.santttal.youtubedownloader2"
+    namespace = "com.santttal.youtubedownloader"
     compileSdk {
         version = release(36) {
             minorApiLevel = 1
@@ -11,7 +11,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.santttal.youtubedownloader2"
+        applicationId = "com.santttal.youtubedownloader"
         minSdk = 26
         targetSdk = 36
         versionCode = 1
