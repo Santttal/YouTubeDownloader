@@ -21,7 +21,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import com.yausername.youtubedl_android.UpdateChannel
 import com.yausername.youtubedl_android.YoutubeDL
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -37,13 +36,12 @@ fun SplashScreen(onReady: () -> Unit) {
         withContext(Dispatchers.IO) {
             try {
                 withTimeout(120_000L) {
+                    statusText = "Обновление yt-dlp..."
                     YoutubeDL.getInstance().updateYoutubeDL(
                         context,
-                        UpdateChannel.STABLE
-                    ) { progressFloat, _, line ->
-                        progress = progressFloat / 100f
-                        statusText = line.ifBlank { "Обновление yt-dlp..." }
-                    }
+                        YoutubeDL.UpdateChannel.STABLE
+                    )
+                    progress = 1f
                 }
                 statusText = "Готово"
             } catch (e: Exception) {
