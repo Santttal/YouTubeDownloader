@@ -21,7 +21,7 @@ import java.util.UUID
 
 sealed class DownloadState {
     object Idle : DownloadState()
-    data class Running(val progress: Int, val processId: String, val speedText: String = "") : DownloadState()
+    data class Running(val progress: Int, val processId: String) : DownloadState()
     object Done : DownloadState()
     data class Failed(val reason: String) : DownloadState()
     object Cancelled : DownloadState()
@@ -46,9 +46,6 @@ class DownloadViewModel(
 
     private val _uiState = MutableStateFlow(DownloadUiState())
     val uiState: StateFlow<DownloadUiState> = _uiState.asStateFlow()
-
-    private var lastProgressTime: Long = 0L
-    private var lastProgressValue: Int = 0
 
     fun onUrlChanged(newUrl: String) {
         _uiState.update { it.copy(url = newUrl, videoInfo = null, infoLoading = false, infoError = null) }
@@ -84,8 +81,6 @@ class DownloadViewModel(
         if (url.isBlank()) return
         if (state.downloadState is DownloadState.Running) return
         val processId = UUID.randomUUID().toString()
-        lastProgressTime = 0L
-        lastProgressValue = 0
         _uiState.update { it.copy(downloadState = DownloadState.Running(0, processId)) }
         startDownloadUseCase.execute(url, state.selectedQuality, processId)
         observeDownloadWork()
@@ -114,20 +109,7 @@ class DownloadViewModel(
                             val progress = info.progress.getInt(DownloadWorker.KEY_PROGRESS, 0)
                             val running = _uiState.value.downloadState as? DownloadState.Running
                             if (running != null) {
-                                val now = System.currentTimeMillis()
-                                val elapsed = now - lastProgressTime
-                                val speedText = if (elapsed > 0 && lastProgressTime > 0) {
-                                    val progressDelta = progress - lastProgressValue
-                                    if (progressDelta > 0) {
-                                        val bytesPerSec = (progressDelta.toLong() * 1_000_000L * 1000L) / (elapsed * 100L)
-                                        formatSpeed(bytesPerSec)
-                                    } else running.speedText
-                                } else running.speedText
-                                if (progress != lastProgressValue || elapsed > 1000) {
-                                    lastProgressTime = now
-                                    lastProgressValue = progress
-                                }
-                                _uiState.update { it.copy(downloadState = running.copy(progress = progress, speedText = speedText)) }
+                                _uiState.update { it.copy(downloadState = running.copy(progress = progress)) }
                             }
                         }
                         else -> { /* ENQUEUED, BLOCKED — ignore */ }
@@ -156,15 +138,5 @@ class DownloadViewModel(
 
     fun onClipboardSnackbarDismissed() {
         _uiState.update { it.copy(clipboardSnackbarVisible = false) }
-    }
-
-    private fun formatSpeed(bytesPerSec: Long): String {
-        return if (bytesPerSec >= 1_048_576L) {
-            "%.1f MB/s".format(bytesPerSec / 1_048_576.0)
-        } else if (bytesPerSec >= 1024L) {
-            "%.0f KB/s".format(bytesPerSec / 1024.0)
-        } else {
-            "$bytesPerSec B/s"
-        }
     }
 }

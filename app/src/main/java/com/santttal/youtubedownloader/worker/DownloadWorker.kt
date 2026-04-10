@@ -61,7 +61,13 @@ class DownloadWorker(
             }
 
             YoutubeDL.getInstance().execute(request, processId) { progress, _, _ ->
-                setProgressAsync(workDataOf(KEY_PROGRESS to progress.toInt()))
+                val p = progress.toInt()
+                setProgressAsync(workDataOf(KEY_PROGRESS to p))
+                // Update foreground notification with current progress
+                val notificationManager =
+                    applicationContext.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+                val updatedForeground = createForegroundInfo(p)
+                notificationManager.notify(NOTIF_ID, updatedForeground.notification)
             }
 
             // Determine the actual output file — yt-dlp may rename after post-processing
@@ -94,6 +100,35 @@ class DownloadWorker(
 
             MediaStoreHelper.saveToDownloads(applicationContext, actualFile, displayName, mimeType)
 
+            // Post completion notification (D-05)
+            val notificationManager =
+                applicationContext.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+
+            // Intent to open the Downloads folder
+            val intent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
+                setDataAndType(
+                    android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI,
+                    "vnd.android.cursor.dir/download"
+                )
+                flags = android.content.Intent.FLAG_ACTIVITY_NEW_TASK
+            }
+            val pendingIntent = android.app.PendingIntent.getActivity(
+                applicationContext,
+                0,
+                intent,
+                android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE
+            )
+
+            val completionNotif = NotificationCompat.Builder(applicationContext, NOTIF_CHANNEL_ID)
+                .setContentTitle("Загрузка завершена")
+                .setContentText(displayName)
+                .setSmallIcon(android.R.drawable.stat_sys_download_done)
+                .setAutoCancel(true)
+                .addAction(android.R.drawable.ic_menu_view, "Открыть", pendingIntent)
+                .build()
+
+            notificationManager.notify(COMPLETION_NOTIF_ID, completionNotif)
+
             Result.success()
         } catch (e: YoutubeDLException) {
             android.util.Log.e(TAG, "YoutubeDL error", e)
@@ -109,21 +144,23 @@ class DownloadWorker(
         }
     }
 
-    private fun createForegroundInfo(): ForegroundInfo {
+    private fun createForegroundInfo(progress: Int = 0): ForegroundInfo {
+        val notificationManager =
+            applicationContext.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
                 NOTIF_CHANNEL_ID,
                 "Downloads",
                 NotificationManager.IMPORTANCE_LOW
             )
-            val notificationManager =
-                applicationContext.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             notificationManager.createNotificationChannel(channel)
         }
 
         val notification = NotificationCompat.Builder(applicationContext, NOTIF_CHANNEL_ID)
-            .setContentTitle("Загрузка...")
+            .setContentTitle(if (progress > 0) "Загрузка... $progress%" else "Загрузка...")
             .setSmallIcon(android.R.drawable.stat_sys_download)
+            .setProgress(100, progress, progress == 0)
             .setOngoing(true)
             .build()
 
@@ -142,6 +179,7 @@ class DownloadWorker(
         const val KEY_PROGRESS = "progress"
         const val KEY_ERROR = "error"
         const val NOTIF_ID = 1001
+        const val COMPLETION_NOTIF_ID = 1002
         const val NOTIF_CHANNEL_ID = "download_channel"
     }
 }
