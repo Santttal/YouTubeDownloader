@@ -20,11 +20,8 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
@@ -38,6 +35,8 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -69,6 +68,13 @@ fun DownloadScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     val context = LocalContext.current
 
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) viewModel.onNotificationPermissionGranted()
+        else viewModel.onNotificationPermissionDenied()
+    }
+
     LaunchedEffect(initialUrl) {
         if (initialUrl != null) {
             viewModel.onShareUrlReceived(initialUrl)
@@ -81,6 +87,14 @@ fun DownloadScreen(
         val url = UrlValidator.extractYouTubeUrl(text) ?: return@LifecycleEventEffect
         if (url != uiState.url) {
             viewModel.onClipboardUrlDetected(url)
+        }
+    }
+
+    LaunchedEffect(uiState.pendingDownload) {
+        if (uiState.pendingDownload &&
+            android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU
+        ) {
+            notificationPermissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
         }
     }
 
@@ -198,29 +212,11 @@ fun DownloadScreen(
 
             when (val state = uiState.downloadState) {
                 is DownloadState.Running -> {
-                    Column(modifier = Modifier.fillMaxWidth()) {
-                        val progressLabel = if (state.speedText.isNotEmpty()) {
-                            "${state.progress}% · ${state.speedText}"
-                        } else {
-                            "${state.progress}%"
-                        }
-                        Text(
-                            text = progressLabel,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(bottom = 4.dp)
-                        )
-                        LinearProgressIndicator(
-                            progress = { state.progress / 100f },
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        OutlinedButton(
-                            onClick = { viewModel.cancelDownload() },
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text("Отмена")
-                        }
+                    OutlinedButton(
+                        onClick = { viewModel.cancelDownload() },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Отмена")
                     }
                 }
                 is DownloadState.Done -> {
@@ -239,29 +235,18 @@ fun DownloadScreen(
                     }
                 }
                 is DownloadState.Failed -> {
-                    Card(
+                    Text(
+                        text = "Ошибка: ${state.reason}",
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.padding(vertical = 4.dp)
+                    )
+                    Button(
+                        onClick = { viewModel.startDownload() },
                         modifier = Modifier.fillMaxWidth(),
-                        colors = CardDefaults.cardColors(
-                            containerColor = MaterialTheme.colorScheme.errorContainer,
-                            contentColor = MaterialTheme.colorScheme.onErrorContainer
-                        )
+                        enabled = uiState.videoInfo != null
                     ) {
-                        Column(modifier = Modifier.padding(16.dp)) {
-                            Text(
-                                text = mapErrorMessage(state.reason),
-                                style = MaterialTheme.typography.bodyMedium
-                            )
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Button(
-                                onClick = { viewModel.startDownload() },
-                                enabled = uiState.videoInfo != null,
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = MaterialTheme.colorScheme.error
-                                )
-                            ) {
-                                Text("Повторить")
-                            }
-                        }
+                        Text("Повторить")
                     }
                 }
                 is DownloadState.Cancelled -> {
@@ -290,25 +275,6 @@ fun DownloadScreen(
                 }
             }
         }
-    }
-}
-
-private fun mapErrorMessage(rawError: String): String {
-    val lower = rawError.lowercase()
-    return when {
-        lower.contains("age") || lower.contains("sign in") || lower.contains("18") ->
-            "Видео доступно только для взрослых. Требуется авторизация."
-        lower.contains("not available in your country") ||
-        lower.contains("geo") || lower.contains("blocked") ->
-            "Видео недоступно в вашем регионе."
-        lower.contains("invalid url") || lower.contains("unsupported url") ||
-        lower.contains("no video formats") ->
-            "Некорректная ссылка YouTube."
-        lower.contains("network") || lower.contains("connection") ||
-        lower.contains("timeout") || lower.contains("unable to connect") ->
-            "Ошибка сети. Проверьте подключение к интернету."
-        else ->
-            "Не удалось скачать видео. Попробуйте позже."
     }
 }
 
