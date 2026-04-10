@@ -1,6 +1,9 @@
 package com.santttal.youtubedownloader.ui.download
 
+import android.Manifest
 import android.content.Context
+import android.content.pm.PackageManager
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.work.WorkInfo
@@ -35,7 +38,8 @@ data class DownloadUiState(
     val selectedQuality: Quality = Quality.Q720P,
     val downloadState: DownloadState = DownloadState.Idle,
     val clipboardSnackbarVisible: Boolean = false,
-    val clipboardUrl: String = ""
+    val clipboardUrl: String = "",
+    val pendingDownload: Boolean = false   // waiting for POST_NOTIFICATIONS permission
 )
 
 class DownloadViewModel(
@@ -80,6 +84,25 @@ class DownloadViewModel(
         val url = state.url
         if (url.isBlank()) return
         if (state.downloadState is DownloadState.Running) return
+
+        // On API 33+ we need to request POST_NOTIFICATIONS before starting
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+            val granted = ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.POST_NOTIFICATIONS
+            ) == PackageManager.PERMISSION_GRANTED
+            if (!granted) {
+                _uiState.update { it.copy(pendingDownload = true) }
+                return   // DownloadScreen will launch the permission request and call back
+            }
+        }
+        doStartDownload()
+    }
+
+    private fun doStartDownload() {
+        val state = _uiState.value
+        val url = state.url
+        if (url.isBlank()) return
         val processId = UUID.randomUUID().toString()
         _uiState.update { it.copy(downloadState = DownloadState.Running(0, processId)) }
         startDownloadUseCase.execute(url, state.selectedQuality, processId)
@@ -124,6 +147,19 @@ class DownloadViewModel(
             YoutubeDL.getInstance().destroyProcessById(running.processId)
         }
         _uiState.update { it.copy(downloadState = DownloadState.Cancelled) }
+    }
+
+    /** Called by DownloadScreen when POST_NOTIFICATIONS is granted on API 33+. */
+    fun onNotificationPermissionGranted() {
+        _uiState.update { it.copy(pendingDownload = false) }
+        doStartDownload()
+    }
+
+    /** Called by DownloadScreen when POST_NOTIFICATIONS is denied on API 33+. */
+    fun onNotificationPermissionDenied() {
+        _uiState.update { it.copy(pendingDownload = false) }
+        // Proceed anyway — downloads still work, just no notification
+        doStartDownload()
     }
 
     fun onClipboardUrlDetected(url: String) {

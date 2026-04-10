@@ -35,6 +35,8 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -66,6 +68,13 @@ fun DownloadScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     val context = LocalContext.current
 
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) viewModel.onNotificationPermissionGranted()
+        else viewModel.onNotificationPermissionDenied()
+    }
+
     LaunchedEffect(initialUrl) {
         if (initialUrl != null) {
             viewModel.onShareUrlReceived(initialUrl)
@@ -78,6 +87,14 @@ fun DownloadScreen(
         val url = UrlValidator.extractYouTubeUrl(text) ?: return@LifecycleEventEffect
         if (url != uiState.url) {
             viewModel.onClipboardUrlDetected(url)
+        }
+    }
+
+    LaunchedEffect(uiState.pendingDownload) {
+        if (uiState.pendingDownload &&
+            android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU
+        ) {
+            notificationPermissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
         }
     }
 
