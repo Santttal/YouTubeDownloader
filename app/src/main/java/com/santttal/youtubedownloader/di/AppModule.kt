@@ -12,5 +12,5 @@ val appModule = module {
     single { DownloadRepository(androidContext()) }
     factory { VideoInfoUseCase(get()) }
     factory { StartDownloadUseCase(androidContext()) }
-    viewModel { DownloadViewModel(get(), get()) }
+    viewModel { DownloadViewModel(androidContext(), get(), get()) }
 }

@@ -164,6 +164,15 @@ fun DownloadScreen(
                 }
             }
 
+            if (uiState.infoError != null) {
+                Text(
+                    text = "Ошибка: ${uiState.infoError}",
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.padding(vertical = 4.dp)
+                )
+            }
+
             Spacer(modifier = Modifier.height(12.dp))
 
             Row(
@@ -184,20 +193,68 @@ fun DownloadScreen(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            if (uiState.downloadState is DownloadState.Running) {
-                OutlinedButton(
-                    onClick = { viewModel.cancelDownload() },
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("Отмена")
+            when (val state = uiState.downloadState) {
+                is DownloadState.Running -> {
+                    OutlinedButton(
+                        onClick = { viewModel.cancelDownload() },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Отмена")
+                    }
                 }
-            } else {
-                Button(
-                    onClick = { viewModel.startDownload() },
-                    modifier = Modifier.fillMaxWidth(),
-                    enabled = uiState.videoInfo != null && uiState.downloadState !is DownloadState.Running
-                ) {
-                    Text("Скачать")
+                is DownloadState.Done -> {
+                    Text(
+                        text = "Загрузка завершена! Файл в папке Downloads.",
+                        color = MaterialTheme.colorScheme.primary,
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.padding(vertical = 8.dp)
+                    )
+                    Button(
+                        onClick = { viewModel.startDownload() },
+                        modifier = Modifier.fillMaxWidth(),
+                        enabled = uiState.videoInfo != null
+                    ) {
+                        Text("Скачать ещё")
+                    }
+                }
+                is DownloadState.Failed -> {
+                    Text(
+                        text = "Ошибка: ${state.reason}",
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.padding(vertical = 4.dp)
+                    )
+                    Button(
+                        onClick = { viewModel.startDownload() },
+                        modifier = Modifier.fillMaxWidth(),
+                        enabled = uiState.videoInfo != null
+                    ) {
+                        Text("Повторить")
+                    }
+                }
+                is DownloadState.Cancelled -> {
+                    Text(
+                        text = "Загрузка отменена",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.padding(vertical = 8.dp)
+                    )
+                    Button(
+                        onClick = { viewModel.startDownload() },
+                        modifier = Modifier.fillMaxWidth(),
+                        enabled = uiState.videoInfo != null
+                    ) {
+                        Text("Скачать")
+                    }
+                }
+                else -> {
+                    Button(
+                        onClick = { viewModel.startDownload() },
+                        modifier = Modifier.fillMaxWidth(),
+                        enabled = uiState.videoInfo != null
+                    ) {
+                        Text("Скачать")
+                    }
                 }
             }
         }

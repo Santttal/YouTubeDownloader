@@ -37,15 +37,18 @@ fun SplashScreen(onReady: () -> Unit) {
             try {
                 withTimeout(120_000L) {
                     statusText = "Обновление yt-dlp..."
-                    YoutubeDL.getInstance().updateYoutubeDL(
+                    // Use NIGHTLY channel — YouTube changes API frequently,
+                    // stable releases lag behind
+                    val status = YoutubeDL.getInstance().updateYoutubeDL(
                         context,
-                        YoutubeDL.UpdateChannel.STABLE
+                        YoutubeDL.UpdateChannel._NIGHTLY
                     )
+                    android.util.Log.d("SplashScreen", "yt-dlp update result: $status")
                     progress = 1f
                 }
                 statusText = "Готово"
             } catch (e: Exception) {
-                // Non-fatal: cached binary still works; proceed to main screen
+                android.util.Log.e("SplashScreen", "yt-dlp update failed", e)
                 statusText = "Обновление пропущено"
             }
         }

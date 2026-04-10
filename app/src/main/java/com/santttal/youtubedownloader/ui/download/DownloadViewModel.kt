@@ -1,11 +1,15 @@
 package com.santttal.youtubedownloader.ui.download
 
+import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.work.WorkInfo
+import androidx.work.WorkManager
 import com.santttal.youtubedownloader.domain.StartDownloadUseCase
 import com.santttal.youtubedownloader.domain.VideoInfoUseCase
 import com.santttal.youtubedownloader.model.Quality
 import com.santttal.youtubedownloader.model.VideoInfo
+import com.santttal.youtubedownloader.worker.DownloadWorker
 import com.yausername.youtubedl_android.YoutubeDL
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -27,6 +31,7 @@ data class DownloadUiState(
     val url: String = "",
     val infoLoading: Boolean = false,
     val videoInfo: VideoInfo? = null,
+    val infoError: String? = null,
     val selectedQuality: Quality = Quality.Q720P,
     val downloadState: DownloadState = DownloadState.Idle,
     val clipboardSnackbarVisible: Boolean = false,
@@ -34,6 +39,7 @@ data class DownloadUiState(
 )
 
 class DownloadViewModel(
+    private val context: Context,
     private val videoInfoUseCase: VideoInfoUseCase,
     private val startDownloadUseCase: StartDownloadUseCase
 ) : ViewModel() {
@@ -42,7 +48,7 @@ class DownloadViewModel(
     val uiState: StateFlow<DownloadUiState> = _uiState.asStateFlow()
 
     fun onUrlChanged(newUrl: String) {
-        _uiState.update { it.copy(url = newUrl, videoInfo = null, infoLoading = false) }
+        _uiState.update { it.copy(url = newUrl, videoInfo = null, infoLoading = false, infoError = null) }
     }
 
     fun onShareUrlReceived(url: String?) {
@@ -59,7 +65,8 @@ class DownloadViewModel(
                 val info = videoInfoUseCase.execute(url)
                 _uiState.update { it.copy(infoLoading = false, videoInfo = info) }
             } catch (e: Exception) {
-                _uiState.update { it.copy(infoLoading = false) }
+                android.util.Log.e("DownloadVM", "fetchVideoInfo failed", e)
+                _uiState.update { it.copy(infoLoading = false, infoError = e.message ?: e.toString()) }
             }
         }
     }
@@ -76,6 +83,39 @@ class DownloadViewModel(
         val processId = UUID.randomUUID().toString()
         _uiState.update { it.copy(downloadState = DownloadState.Running(0, processId)) }
         startDownloadUseCase.execute(url, state.selectedQuality, processId)
+        observeDownloadWork()
+    }
+
+    private fun observeDownloadWork() {
+        viewModelScope.launch {
+            WorkManager.getInstance(context)
+                .getWorkInfosForUniqueWorkFlow("yt-download")
+                .collect { workInfos ->
+                    val info = workInfos.firstOrNull() ?: return@collect
+                    when (info.state) {
+                        WorkInfo.State.SUCCEEDED -> {
+                            _uiState.update { it.copy(downloadState = DownloadState.Done) }
+                        }
+                        WorkInfo.State.FAILED -> {
+                            // If user already cancelled, don't overwrite with error
+                            if (_uiState.value.downloadState is DownloadState.Cancelled) return@collect
+                            val error = info.outputData.getString(DownloadWorker.KEY_ERROR) ?: "Unknown error"
+                            _uiState.update { it.copy(downloadState = DownloadState.Failed(error)) }
+                        }
+                        WorkInfo.State.CANCELLED -> {
+                            _uiState.update { it.copy(downloadState = DownloadState.Cancelled) }
+                        }
+                        WorkInfo.State.RUNNING -> {
+                            val progress = info.progress.getInt(DownloadWorker.KEY_PROGRESS, 0)
+                            val running = _uiState.value.downloadState as? DownloadState.Running
+                            if (running != null) {
+                                _uiState.update { it.copy(downloadState = running.copy(progress = progress)) }
+                            }
+                        }
+                        else -> { /* ENQUEUED, BLOCKED — ignore */ }
+                    }
+                }
+        }
     }
 
     fun cancelDownload() {

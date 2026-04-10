@@ -14,6 +14,7 @@ import com.santttal.youtubedownloader.util.MediaStoreHelper
 import com.yausername.youtubedl_android.YoutubeDL
 import com.yausername.youtubedl_android.YoutubeDLException
 import com.yausername.youtubedl_android.YoutubeDLRequest
+import android.content.pm.ServiceInfo
 import java.io.File
 import java.util.UUID
 
@@ -23,6 +24,7 @@ class DownloadWorker(
 ) : CoroutineWorker(ctx, params) {
 
     override suspend fun doWork(): Result {
+        android.util.Log.d(TAG, "doWork started: url=${inputData.getString(KEY_URL)}, format=${inputData.getString(KEY_FORMAT)}, isAudio=${inputData.getBoolean(KEY_IS_AUDIO, false)}")
         val url = inputData.getString(KEY_URL)
             ?: return Result.failure(workDataOf(KEY_ERROR to "Missing URL"))
         val format = inputData.getString(KEY_FORMAT)
@@ -39,15 +41,22 @@ class DownloadWorker(
         val tempMp4File = File(applicationContext.cacheDir, "$processId.mp4")
 
         return try {
+            val ffmpegDir = applicationContext.applicationInfo.nativeLibraryDir
+
             val request = YoutubeDLRequest(url).apply {
                 addOption("-f", format)
                 addOption("-o", tempFile.absolutePath)
-                addOption("--downloader", "libaria2c.so")
                 addOption("--no-playlist")
+                addOption("--force-ipv4")
+                addOption("--source-address", "0.0.0.0")
+                addOption("--socket-timeout", "30")
+                addOption("--ffmpeg-location", ffmpegDir)
                 if (isAudio) {
                     addOption("--extract-audio")
                     addOption("--audio-format", "mp3")
                     addOption("--audio-quality", "192k")
+                } else {
+                    addOption("--extractor-args", "youtube:player_client=tv,tv_simply")
                 }
             }
 
@@ -56,15 +65,28 @@ class DownloadWorker(
             }
 
             // Determine the actual output file — yt-dlp may rename after post-processing
-            val actualFile = when {
-                tempFile.exists() -> tempFile
-                isAudio && tempMp3File.exists() -> tempMp3File
-                !isAudio && tempMp4File.exists() -> tempMp4File
-                else -> return Result.failure(workDataOf(KEY_ERROR to "Output file not found after download"))
-            }
+            // Search cache dir for any file matching processId prefix
+            val cacheDir = applicationContext.cacheDir
+            val actualFile = cacheDir.listFiles()
+                ?.filter { it.name.startsWith(processId) && !it.name.endsWith(".part") }
+                ?.maxByOrNull { it.length() }
+                ?: when {
+                    tempFile.exists() -> tempFile
+                    tempMp3File.exists() -> tempMp3File
+                    tempMp4File.exists() -> tempMp4File
+                    else -> return Result.failure(workDataOf(KEY_ERROR to "Output file not found after download"))
+                }
 
-            val extension = if (isAudio) "mp3" else "mp4"
-            val mimeType = if (isAudio) "audio/mpeg" else "video/mp4"
+            android.util.Log.d(TAG, "Output file: ${actualFile.name} (${actualFile.length()} bytes)")
+
+            val extension = actualFile.extension.ifEmpty { if (isAudio) "mp3" else "mp4" }
+            val mimeType = when (extension) {
+                "mp3" -> "audio/mpeg"
+                "m4a" -> "audio/mp4"
+                "mp4" -> "video/mp4"
+                "webm" -> "video/webm"
+                else -> if (isAudio) "audio/mpeg" else "video/mp4"
+            }
             val displayName = FilenameUtils.buildFilename(
                 "download_${System.currentTimeMillis()}",
                 extension
@@ -74,14 +96,16 @@ class DownloadWorker(
 
             Result.success()
         } catch (e: YoutubeDLException) {
+            android.util.Log.e(TAG, "YoutubeDL error", e)
             Result.failure(workDataOf(KEY_ERROR to (e.message ?: "YoutubeDL error")))
         } catch (e: Exception) {
+            android.util.Log.e(TAG, "Unexpected error", e)
             Result.failure(workDataOf(KEY_ERROR to "Unexpected error: ${e.message}"))
         } finally {
-            // Clean up all possible temp files regardless of success or failure
-            if (tempFile.exists()) tempFile.delete()
-            if (tempMp3File.exists()) tempMp3File.delete()
-            if (tempMp4File.exists()) tempMp4File.delete()
+            // Clean up all files matching processId in cache dir
+            applicationContext.cacheDir.listFiles()
+                ?.filter { it.name.startsWith(processId) }
+                ?.forEach { it.delete() }
         }
     }
 
@@ -103,6 +127,9 @@ class DownloadWorker(
             .setOngoing(true)
             .build()
 
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            return ForegroundInfo(NOTIF_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
+        }
         return ForegroundInfo(NOTIF_ID, notification)
     }
 

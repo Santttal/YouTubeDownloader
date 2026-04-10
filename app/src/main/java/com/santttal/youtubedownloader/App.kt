@@ -2,6 +2,7 @@ package com.santttal.youtubedownloader
 
 import android.app.Application
 import android.util.Log
+import com.yausername.ffmpeg.FFmpeg
 import com.yausername.youtubedl_android.YoutubeDL
 import com.yausername.youtubedl_android.YoutubeDLException
 import com.santttal.youtubedownloader.di.appModule
@@ -15,8 +16,9 @@ class App : Application() {
         // Crash prevention: catch YoutubeDLException here; update is retried on SplashScreen.
         try {
             YoutubeDL.getInstance().init(this)
+            FFmpeg.getInstance().init(this)
         } catch (e: YoutubeDLException) {
-            Log.e("App", "YoutubeDL init failed — will retry on SplashScreen", e)
+            Log.e("App", "YoutubeDL/FFmpeg init failed — will retry on SplashScreen", e)
         }
         startKoin {
             androidContext(this@App)
