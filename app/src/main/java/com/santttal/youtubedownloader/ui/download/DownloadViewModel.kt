@@ -47,6 +47,7 @@ class DownloadViewModel(
     private val context: Context,
     private val videoInfoUseCase: VideoInfoUseCase,
     private val downloadRepository: DownloadRepository,
+    private val instagramRepository: com.santttal.youtubedownloader.data.InstagramRepository,
     private val startDownloadUseCase: StartDownloadUseCase
 ) : ViewModel() {
 
@@ -67,10 +68,14 @@ class DownloadViewModel(
 
     fun fetchVideoInfo(url: String = _uiState.value.url) {
         if (url.isBlank()) return
-        _uiState.update { it.copy(infoLoading = true, videoInfo = null) }
+        _uiState.update { it.copy(infoLoading = true, videoInfo = null, infoError = null) }
         viewModelScope.launch {
             try {
-                val info = videoInfoUseCase.execute(url)
+                val info = if (com.santttal.youtubedownloader.util.UrlValidator.isInstagramUrl(url)) {
+                    instagramRepository.getVideoInfo(url)
+                } else {
+                    videoInfoUseCase.execute(url)
+                }
                 _uiState.update { it.copy(infoLoading = false, videoInfo = info) }
             } catch (e: Exception) {
                 android.util.Log.e("DownloadVM", "fetchVideoInfo failed", e)
@@ -110,7 +115,12 @@ class DownloadViewModel(
 
         viewModelScope.launch {
             try {
-                val streamUrls = downloadRepository.resolveStreamUrls(url, state.selectedQuality)
+                val isInstagram = com.santttal.youtubedownloader.util.UrlValidator.isInstagramUrl(url)
+                val streamUrls = if (isInstagram) {
+                    instagramRepository.resolveStreamUrls(url)
+                } else {
+                    downloadRepository.resolveStreamUrls(url, state.selectedQuality)
+                }
                 _uiState.update { it.copy(downloadState = DownloadState.Running(0, processId)) }
                 startDownloadUseCase.execute(streamUrls, state.selectedQuality.isAudioOnly, processId)
                 observeDownloadWork()

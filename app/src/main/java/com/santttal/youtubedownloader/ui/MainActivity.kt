@@ -23,7 +23,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        sharedUrl = extractYouTubeUrl(intent)
+        sharedUrl = extractSupportedUrl(intent)
         setContent {
             AppTheme {
                 val navController = rememberNavController()
@@ -49,12 +49,12 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        sharedUrl = extractYouTubeUrl(intent)
+        sharedUrl = extractSupportedUrl(intent)
     }
 
-    private fun extractYouTubeUrl(intent: Intent?): String? {
+    private fun extractSupportedUrl(intent: Intent?): String? {
         if (intent?.action != Intent.ACTION_SEND) return null
         if (intent.type != "text/plain") return null
-        return intent.getStringExtra(Intent.EXTRA_TEXT)?.let { UrlValidator.extractYouTubeUrl(it) }
+        return intent.getStringExtra(Intent.EXTRA_TEXT)?.let { UrlValidator.extractSupportedUrl(it) }
     }
 }

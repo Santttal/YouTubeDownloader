@@ -85,7 +85,7 @@ fun DownloadScreen(
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
         val clipboard = context.getSystemService(ClipboardManager::class.java)
         val text = clipboard?.primaryClip?.getItemAt(0)?.text?.toString() ?: return@LifecycleEventEffect
-        val url = UrlValidator.extractYouTubeUrl(text) ?: return@LifecycleEventEffect
+        val url = UrlValidator.extractSupportedUrl(text) ?: return@LifecycleEventEffect
         if (url != uiState.url) {
             viewModel.onClipboardUrlDetected(url)
         }
@@ -102,7 +102,7 @@ fun DownloadScreen(
     LaunchedEffect(uiState.clipboardSnackbarVisible) {
         if (uiState.clipboardSnackbarVisible) {
             val result = snackbarHostState.showSnackbar(
-                message = "YouTube ссылка обнаружена",
+                message = "Ссылка на видео обнаружена",
                 actionLabel = "Вставить",
                 duration = SnackbarDuration.Long
             )
@@ -128,7 +128,7 @@ fun DownloadScreen(
             OutlinedTextField(
                 value = uiState.url,
                 onValueChange = viewModel::onUrlChanged,
-                label = { Text("Вставьте ссылку YouTube") },
+                label = { Text("Вставьте ссылку YouTube / Instagram") },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(

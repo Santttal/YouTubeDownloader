@@ -133,12 +133,13 @@ class DownloadWorker(
         }
 
         // Parallel multi-threaded download (like NewPipe) — 20x faster than single GET
+        applicationContext.cacheDir.mkdirs()
         val threadCount = 4
         val chunkSize = 1024 * 1024L // 1MB chunks
         val partSize = contentLength / threadCount
         val downloaded = java.util.concurrent.atomic.AtomicLong(0)
         val error = java.util.concurrent.atomic.AtomicReference<Exception>(null)
-        val partFiles = (0 until threadCount).map { File(outputFile.parent, "${outputFile.name}.part$it") }
+        val partFiles = (0 until threadCount).map { File(applicationContext.cacheDir, "${outputFile.name}.part$it") }
         var lastReportedProgress = -1
 
         Log.d(TAG, "Parallel download: $threadCount threads, ${contentLength / 1024 / 1024} MB total")
@@ -149,6 +150,7 @@ class DownloadWorker(
 
             Thread {
                 try {
+                    Log.d(TAG, "Thread $i: ${partStart}-${partEnd} → ${partFiles[i].absolutePath}")
                     partFiles[i].outputStream().use { output ->
                         var offset = partStart
                         while (offset <= partEnd && error.get() == null) {

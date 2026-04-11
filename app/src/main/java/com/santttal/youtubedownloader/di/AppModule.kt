@@ -1,6 +1,7 @@
 package com.santttal.youtubedownloader.di
 
 import com.santttal.youtubedownloader.data.DownloadRepository
+import com.santttal.youtubedownloader.data.InstagramRepository
 import com.santttal.youtubedownloader.domain.StartDownloadUseCase
 import com.santttal.youtubedownloader.domain.VideoInfoUseCase
 import com.santttal.youtubedownloader.ui.download.DownloadViewModel
@@ -10,7 +11,8 @@ import org.koin.dsl.module
 
 val appModule = module {
     single { DownloadRepository() }
+    single { InstagramRepository() }
     factory { VideoInfoUseCase(get()) }
     factory { StartDownloadUseCase(androidContext()) }
-    viewModel { DownloadViewModel(androidContext(), get(), get(), get()) }
+    viewModel { DownloadViewModel(androidContext(), get(), get(), get(), get()) }
 }
