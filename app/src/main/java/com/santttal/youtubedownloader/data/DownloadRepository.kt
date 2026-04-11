@@ -39,21 +39,23 @@ class DownloadRepository {
 
         val targetHeight = quality.heightPx
 
-        // First, check if a video-only DASH stream exists at the target resolution
-        // YouTube typically only has progressive (muxed) up to 360-720p,
-        // so 1080p requires DASH video-only + separate audio + FFmpeg mux
+        // Filter for MP4-compatible formats only (MediaMuxer can't handle WebM/VP9)
+        // MPEG-4 video + m4a audio = safe for MediaMuxer
         val videoOnly = info.videoOnlyStreams
             .filter { it.isUrl }
+            .filter { it.format?.name == "MPEG-4" }
             .filter { extractHeight(it) <= targetHeight }
             .maxByOrNull { extractHeight(it) }
 
         val bestAudio = info.audioStreams
             .filter { it.isUrl }
+            .filter { it.format?.name == "m4a" || it.format?.name == "M4A" || it.format?.name == "MPEG-4" }
             .maxByOrNull { it.averageBitrate }
 
         // Use DASH if it gives us a higher resolution than the best progressive
         val bestProgressive = info.videoStreams
             .filter { it.isUrl && !it.isVideoOnly }
+            .filter { it.format?.name == "MPEG-4" }
             .filter { extractHeight(it) <= targetHeight }
             .maxByOrNull { extractHeight(it) }
 

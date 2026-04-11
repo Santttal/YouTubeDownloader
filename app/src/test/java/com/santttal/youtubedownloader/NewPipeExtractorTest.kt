@@ -336,4 +336,107 @@ class NewPipeExtractorTest {
             tempFile.delete()
         }
     }
+
+    @Test
+    fun `shorts video has mp4 compatible streams for MediaMuxer`() {
+        // This Shorts URL caused "Failed to add the track to the muxer"
+        // because MediaMuxer only supports MP4/H.264, not WebM/VP9
+        val shortsUrl = TEST_VIDEO_URL
+        val info = StreamInfo.getInfo(shortsUrl)
+
+        println("Title: ${info.name}")
+
+        // Check what formats are available
+        println("\nProgressive streams:")
+        info.videoStreams.forEach { s ->
+            println("  ${s.getResolution()} | ${s.format?.name} | videoOnly=${s.isVideoOnly} | url=${s.isUrl}")
+        }
+
+        println("\nVideo-only streams:")
+        info.videoOnlyStreams.forEach { s ->
+            println("  ${s.getResolution()} | ${s.format?.name} | videoOnly=${s.isVideoOnly} | url=${s.isUrl}")
+        }
+
+        println("\nAudio streams:")
+        info.audioStreams.forEach { s ->
+            println("  ${s.averageBitrate}kbps | ${s.format?.name} | url=${s.isUrl}")
+        }
+
+        // Filter for MP4-compatible streams (MPEG_4 format = H.264/AAC)
+        val mp4Videos = (info.videoStreams + info.videoOnlyStreams)
+            .filter { it.isUrl }
+            .filter { it.format?.name == "MPEG-4" || it.format?.name == "v3GPP" }
+
+        val mp4Audio = info.audioStreams
+            .filter { it.isUrl }
+            .filter { it.format?.name == "m4a" || it.format?.name == "M4A" || it.format?.name == "MPEG-4" }
+
+        println("\nMP4-compatible video streams: ${mp4Videos.size}")
+        mp4Videos.forEach { println("  ${it.getResolution()} | ${it.format?.name}") }
+
+        println("MP4-compatible audio streams: ${mp4Audio.size}")
+        mp4Audio.forEach { println("  ${it.averageBitrate}kbps | ${it.format?.name}") }
+
+        // At least one of each should exist for MediaMuxer to work
+        if (mp4Videos.isEmpty()) {
+            println("\nWARNING: No MP4 video streams — all are WebM/VP9. Need fallback strategy.")
+            // Print all format names to understand what's available
+            val formats = (info.videoStreams + info.videoOnlyStreams).map { it.format?.name }.distinct()
+            println("Available formats: $formats")
+        }
+    }
+
+    @Test
+    fun `1080p video KLuTLF3x9sA has correct resolution streams`() {
+        val url = "https://youtu.be/KLuTLF3x9sA"
+        val info = StreamInfo.getInfo(url)
+
+        println("Title: ${info.name}")
+        println("Duration: ${info.duration}s")
+
+        println("\nALL Progressive streams:")
+        info.videoStreams.forEach { s ->
+            println("  ${s.getResolution()} | ${s.format?.name} | videoOnly=${s.isVideoOnly}")
+        }
+
+        println("\nALL Video-only streams:")
+        info.videoOnlyStreams.forEach { s ->
+            println("  ${s.getResolution()} | ${s.format?.name}")
+        }
+
+        println("\nALL Audio streams:")
+        info.audioStreams.forEach { s ->
+            println("  ${s.averageBitrate}kbps | ${s.format?.name}")
+        }
+
+        // Check what's available at 1080p
+        val all1080 = (info.videoStreams + info.videoOnlyStreams)
+            .filter { it.isUrl }
+            .filter { it.getResolution()?.contains("1080") == true }
+        println("\n1080p streams (any format): ${all1080.size}")
+        all1080.forEach { println("  ${it.getResolution()} | ${it.format?.name} | videoOnly=${it.isVideoOnly}") }
+
+        val mp4_1080 = all1080.filter { it.format?.name == "MPEG-4" }
+        println("1080p MPEG-4 streams: ${mp4_1080.size}")
+
+        if (mp4_1080.isEmpty() && all1080.isNotEmpty()) {
+            println("WARNING: 1080p only available in ${all1080.map { it.format?.name }.distinct()}")
+        }
+
+        // Test resolveStreamUrls logic
+        val mp4VideoOnly = info.videoOnlyStreams
+            .filter { it.isUrl }
+            .filter { it.format?.name == "MPEG-4" }
+            .filter { (it.getResolution()?.replace("p", "")?.toIntOrNull() ?: 0) <= 1080 }
+            .maxByOrNull { it.getResolution()?.replace("p", "")?.toIntOrNull() ?: 0 }
+
+        println("\nresolution field values for MPEG-4 video-only:")
+        info.videoOnlyStreams
+            .filter { it.format?.name == "MPEG-4" }
+            .forEach { println("  getResolution()='${it.getResolution()}' | height=${it.getHeight()} | format=${it.format?.name}") }
+
+        println("\nSelected DASH video: ${mp4VideoOnly?.getResolution()} | height=${mp4VideoOnly?.getHeight()}")
+
+        assertTrue("Should find 1080p MPEG-4 stream", mp4_1080.isNotEmpty())
+    }
 }
