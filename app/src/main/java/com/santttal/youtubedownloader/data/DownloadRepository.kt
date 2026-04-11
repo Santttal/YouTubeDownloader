@@ -1,85 +1,105 @@
 package com.santttal.youtubedownloader.data
 
-import android.content.Context
+import com.santttal.youtubedownloader.model.Quality
+import com.santttal.youtubedownloader.model.StreamUrls
 import com.santttal.youtubedownloader.model.VideoInfo
-import com.yausername.youtubedl_android.YoutubeDL
-import com.yausername.youtubedl_android.YoutubeDLRequest
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import org.json.JSONObject
-import java.net.HttpURLConnection
-import java.net.URL
+import org.schabi.newpipe.extractor.stream.AudioStream
+import org.schabi.newpipe.extractor.stream.StreamInfo
+import org.schabi.newpipe.extractor.stream.VideoStream
 
-class DownloadRepository(private val context: Context) {
+class DownloadRepository {
 
-    /**
-     * Fast video info via YouTube oEmbed API (title + thumbnail in ~1 second).
-     * Extracts video ID for high-quality thumbnail URL.
-     * Falls back to yt-dlp getInfo() if oEmbed fails.
-     */
     suspend fun getVideoInfo(url: String): VideoInfo = withContext(Dispatchers.IO) {
-        try {
-            getVideoInfoFast(url)
-        } catch (e: Exception) {
-            android.util.Log.w("DownloadRepo", "oEmbed failed, falling back to yt-dlp", e)
-            getVideoInfoYtDlp(url)
-        }
+        val info = StreamInfo.getInfo(url)
+        VideoInfo(
+            title = info.name ?: "Unknown",
+            thumbnailUrl = info.thumbnails.firstOrNull()?.url ?: "",
+            durationSeconds = info.duration
+        )
     }
 
-    private fun getVideoInfoFast(url: String): VideoInfo {
-        val oembedUrl = "https://www.youtube.com/oembed?url=${java.net.URLEncoder.encode(url, "UTF-8")}&format=json"
-        val conn = URL(oembedUrl).openConnection() as HttpURLConnection
-        conn.connectTimeout = 10_000
-        conn.readTimeout = 10_000
-        try {
-            val json = JSONObject(conn.inputStream.bufferedReader().readText())
-            val title = json.getString("title")
+    suspend fun resolveStreamUrls(url: String, quality: Quality): StreamUrls = withContext(Dispatchers.IO) {
+        val info = StreamInfo.getInfo(url)
+        val title = info.name ?: "download"
 
-            // Extract video ID for high-quality thumbnail
-            val videoId = extractVideoId(url)
-            val thumbnailUrl = if (videoId != null) {
-                "https://img.youtube.com/vi/$videoId/hqdefault.jpg"
-            } else {
-                json.optString("thumbnail_url", "")
-            }
-
-            return VideoInfo(
+        if (quality == Quality.MP3) {
+            val audioStream = info.audioStreams
+                .filter { it.isUrl }
+                .maxByOrNull { it.averageBitrate }
+            return@withContext StreamUrls(
+                videoUrl = null,
+                audioUrl = audioStream?.content,
                 title = title,
-                thumbnailUrl = thumbnailUrl,
-                durationSeconds = 0L // oEmbed doesn't provide duration
+                isVideoOnly = false,
+                needsMux = false
             )
-        } finally {
-            conn.disconnect()
+        }
+
+        val targetHeight = quality.heightPx
+
+        // First, check if a video-only DASH stream exists at the target resolution
+        // YouTube typically only has progressive (muxed) up to 360-720p,
+        // so 1080p requires DASH video-only + separate audio + FFmpeg mux
+        val videoOnly = info.videoOnlyStreams
+            .filter { it.isUrl }
+            .filter { extractHeight(it) <= targetHeight }
+            .maxByOrNull { extractHeight(it) }
+
+        val bestAudio = info.audioStreams
+            .filter { it.isUrl }
+            .maxByOrNull { it.averageBitrate }
+
+        // Use DASH if it gives us a higher resolution than the best progressive
+        val bestProgressive = info.videoStreams
+            .filter { it.isUrl && !it.isVideoOnly }
+            .filter { extractHeight(it) <= targetHeight }
+            .maxByOrNull { extractHeight(it) }
+
+        val dashHeight = videoOnly?.let { extractHeight(it) } ?: 0
+        val progressiveHeight = bestProgressive?.let { extractHeight(it) } ?: 0
+
+        if (dashHeight > progressiveHeight && videoOnly != null && bestAudio != null) {
+            // DASH gives higher quality — use video-only + audio, mux with FFmpeg
+            StreamUrls(
+                videoUrl = videoOnly.content,
+                audioUrl = bestAudio.content,
+                title = title,
+                isVideoOnly = true,
+                needsMux = true
+            )
+        } else if (bestProgressive != null) {
+            // Progressive is same or better quality — no muxing needed
+            StreamUrls(
+                videoUrl = bestProgressive.content,
+                audioUrl = null,
+                title = title,
+                isVideoOnly = false,
+                needsMux = false
+            )
+        } else if (videoOnly != null && bestAudio != null) {
+            // Only DASH available
+            StreamUrls(
+                videoUrl = videoOnly.content,
+                audioUrl = bestAudio.content,
+                title = title,
+                isVideoOnly = true,
+                needsMux = true
+            )
+        } else {
+            // Fallback — take whatever is available
+            StreamUrls(
+                videoUrl = bestProgressive?.content ?: videoOnly?.content,
+                audioUrl = bestAudio?.content,
+                title = title,
+                isVideoOnly = videoOnly != null,
+                needsMux = false
+            )
         }
     }
 
-    private fun getVideoInfoYtDlp(url: String): VideoInfo {
-        val request = YoutubeDLRequest(url).apply {
-            addOption("--no-playlist")
-            addOption("--force-ipv4")
-            addOption("--source-address", "0.0.0.0")
-            addOption("--extractor-args", "youtube:player_client=tv,tv_simply")
-            addOption("--socket-timeout", "30")
-            addOption("--geo-bypass")
-        }
-        val rawInfo = YoutubeDL.getInstance().getInfo(request)
-        return VideoInfo(
-            title = rawInfo.title ?: "Unknown",
-            thumbnailUrl = rawInfo.thumbnail ?: "",
-            durationSeconds = rawInfo.duration?.toLong() ?: 0L
-        )
-    }
-
-    private fun extractVideoId(url: String): String? {
-        val patterns = listOf(
-            Regex("""youtu\.be/([\w\-]{11})"""),
-            Regex("""youtube\.com/watch\?v=([\w\-]{11})"""),
-            Regex("""youtube\.com/shorts/([\w\-]{11})"""),
-            Regex("""youtube\.com/embed/([\w\-]{11})""")
-        )
-        for (pattern in patterns) {
-            pattern.find(url)?.groupValues?.get(1)?.let { return it }
-        }
-        return null
+    private fun extractHeight(stream: VideoStream): Int {
+        return stream.resolution?.replace("p", "")?.toIntOrNull() ?: 0
     }
 }
