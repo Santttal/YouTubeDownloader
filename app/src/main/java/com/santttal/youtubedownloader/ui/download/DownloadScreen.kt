@@ -191,21 +191,24 @@ fun DownloadScreen(
                 )
             }
 
-            Spacer(modifier = Modifier.height(12.dp))
+            // Quality chips only for YouTube (Instagram has no quality selection)
+            if (!UrlValidator.isInstagramUrl(uiState.url)) {
+                Spacer(modifier = Modifier.height(12.dp))
 
-            Row(
-                modifier = Modifier.horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Quality.entries.forEach { quality ->
-                    FilterChip(
-                        selected = uiState.selectedQuality == quality,
-                        onClick = { viewModel.onQualitySelected(quality) },
-                        label = { Text(quality.label) },
-                        leadingIcon = if (quality == Quality.MP3) {
-                            { Icon(Icons.Default.MusicNote, contentDescription = null) }
-                        } else null
-                    )
+                Row(
+                    modifier = Modifier.horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Quality.entries.forEach { quality ->
+                        FilterChip(
+                            selected = uiState.selectedQuality == quality,
+                            onClick = { viewModel.onQualitySelected(quality) },
+                            label = { Text(quality.label) },
+                            leadingIcon = if (quality == Quality.MP3) {
+                                { Icon(Icons.Default.MusicNote, contentDescription = null) }
+                            } else null
+                        )
+                    }
                 }
             }
 
