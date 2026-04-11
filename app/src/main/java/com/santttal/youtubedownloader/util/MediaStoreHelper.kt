@@ -3,9 +3,11 @@ package com.santttal.youtubedownloader.util
 import android.content.ContentValues
 import android.content.Context
 import android.media.MediaScannerConnection
+import android.net.Uri
 import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
+import androidx.core.content.FileProvider
 import java.io.File
 import java.io.IOException
 
@@ -13,19 +15,15 @@ object MediaStoreHelper {
 
     /**
      * Save a temp file to the public Downloads folder.
-     *
-     * - API 29+ (Android 10+): Uses MediaStore.Downloads with IS_PENDING=1 before write,
-     *   IS_PENDING=0 after write. No WRITE_EXTERNAL_STORAGE permission needed.
-     * - API 26-28: Writes directly to Environment.DIRECTORY_DOWNLOADS and calls
-     *   MediaScannerConnection to index the file.
+     * Returns the content URI of the saved file (for opening in notifications).
      */
     fun saveToDownloads(
         context: Context,
         tempFile: File,
         displayName: String,
         mimeType: String
-    ) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+    ): Uri {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             saveToDownloadsApi29(context, tempFile, displayName, mimeType)
         } else {
             saveToDownloadsLegacy(context, tempFile, displayName, mimeType)
@@ -37,7 +35,7 @@ object MediaStoreHelper {
         tempFile: File,
         displayName: String,
         mimeType: String
-    ) {
+    ): Uri {
         val resolver = context.contentResolver
         val values = ContentValues().apply {
             put(MediaStore.Downloads.DISPLAY_NAME, displayName)
@@ -61,6 +59,8 @@ object MediaStoreHelper {
             resolver.delete(uri, null, null)
             throw IOException("Failed to write to MediaStore: ${e.message}", e)
         }
+
+        return uri
     }
 
     private fun saveToDownloadsLegacy(
@@ -68,7 +68,7 @@ object MediaStoreHelper {
         tempFile: File,
         displayName: String,
         mimeType: String
-    ) {
+    ): Uri {
         val downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
         downloadsDir.mkdirs()
         val destFile = File(downloadsDir, displayName)
@@ -83,5 +83,6 @@ object MediaStoreHelper {
             arrayOf(mimeType),
             null
         )
+        return Uri.fromFile(destFile)
     }
 }

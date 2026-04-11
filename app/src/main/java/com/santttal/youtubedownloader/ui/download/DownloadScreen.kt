@@ -22,6 +22,7 @@ import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
@@ -211,12 +212,44 @@ fun DownloadScreen(
             Spacer(modifier = Modifier.height(16.dp))
 
             when (val state = uiState.downloadState) {
-                is DownloadState.Running -> {
-                    OutlinedButton(
-                        onClick = { viewModel.cancelDownload() },
-                        modifier = Modifier.fillMaxWidth()
+                is DownloadState.Resolving -> {
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        Text("Отмена")
+                        Text(
+                            text = "Получение ссылки...",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(bottom = 4.dp)
+                        )
+                        LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                    }
+                }
+                is DownloadState.Running -> {
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        val progressLabel = if (state.speedText.isNotEmpty()) {
+                            "${state.progress}% · ${state.speedText}"
+                        } else {
+                            "${state.progress}%"
+                        }
+                        Text(
+                            text = progressLabel,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(bottom = 4.dp)
+                        )
+                        LinearProgressIndicator(
+                            progress = { state.progress / 100f },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        OutlinedButton(
+                            onClick = { viewModel.cancelDownload() },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("Отмена")
+                        }
                     }
                 }
                 is DownloadState.Done -> {
