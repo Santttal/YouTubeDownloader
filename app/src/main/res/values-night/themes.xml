@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!-- Minimal XML theme: no action bar. Compose handles all visual theming. -->
-    <style name="Theme.YoutubeDownloader" parent="Theme.AppCompat.Light.NoActionBar" />
+    <style name="Theme.VideoDownloader" parent="Theme.AppCompat.Light.NoActionBar" />
 </resources>

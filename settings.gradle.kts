@@ -23,6 +23,6 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "YoutubeDownloader"
+rootProject.name = "VideoDownloader"
 include(":app")
  

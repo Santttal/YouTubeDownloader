@@ -4,11 +4,11 @@ plugins {
 }
 
 android {
-    namespace = "com.santttal.youtubedownloader"
+    namespace = "com.santttal.videodownloader"
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "com.santttal.youtubedownloader"
+        applicationId = "com.santttal.videodownloader"
         minSdk = 26
         targetSdk = 36
         versionCode = 1

@@ -65,16 +65,16 @@ Functional tests make real HTTP requests to YouTube and Instagram.
 ./gradlew testDebugUnitTest
 
 # YouTube only
-./gradlew testDebugUnitTest --tests "com.santttal.youtubedownloader.NewPipeExtractorTest"
+./gradlew testDebugUnitTest --tests "com.santttal.videodownloader.NewPipeExtractorTest"
 
 # Instagram only
-./gradlew testDebugUnitTest --tests "com.santttal.youtubedownloader.InstagramExtractorTest"
+./gradlew testDebugUnitTest --tests "com.santttal.videodownloader.InstagramExtractorTest"
 ```
 
 ## Project Structure
 
 ```
-app/src/main/java/com/santttal/youtubedownloader/
+app/src/main/java/com/santttal/videodownloader/
   App.kt                          # Application — NewPipe init, FFmpeg init, Koin
   di/AppModule.kt                 # Dependency injection
   data/
