@@ -38,6 +38,7 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
+        isCoreLibraryDesugaringEnabled = true
     }
 
     // D-07: ABI splits — reduces per-arch APK from 150MB+ to ~55MB
@@ -69,9 +70,10 @@ dependencies {
     implementation(libs.coil.network.okhttp)
     implementation(libs.koin.android)
     implementation(libs.koin.compose)
-    implementation(libs.youtubedl.android.library)
     implementation(libs.youtubedl.android.ffmpeg)
-    implementation(libs.youtubedl.android.aria2c)
+    implementation(libs.newpipe.extractor)
+    implementation(libs.okhttp)
+    coreLibraryDesugaring(libs.desugar.jdk.libs)
     debugImplementation(libs.androidx.compose.ui.tooling)
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
