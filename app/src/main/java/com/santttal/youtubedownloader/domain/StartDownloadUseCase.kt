@@ -17,6 +17,7 @@ class StartDownloadUseCase(private val context: Context) {
             DownloadWorker.KEY_TITLE to streamUrls.title,
             DownloadWorker.KEY_NEEDS_MUX to streamUrls.needsMux,
             DownloadWorker.KEY_IS_AUDIO to isAudio,
+            DownloadWorker.KEY_IS_WEBM to streamUrls.isWebm,
             DownloadWorker.KEY_PROCESS_ID to processId
         )
         val request = OneTimeWorkRequestBuilder<DownloadWorker>()

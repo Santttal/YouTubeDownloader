@@ -5,5 +5,6 @@ data class StreamUrls(
     val audioUrl: String?,
     val title: String,
     val isVideoOnly: Boolean,
-    val needsMux: Boolean
+    val needsMux: Boolean,
+    val isWebm: Boolean = false
 )

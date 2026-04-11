@@ -53,8 +53,7 @@ class DownloadViewModel(
     private val _uiState = MutableStateFlow(DownloadUiState())
     val uiState: StateFlow<DownloadUiState> = _uiState.asStateFlow()
 
-    private var lastProgressTime: Long = 0L
-    private var lastProgressValue: Int = 0
+    private var downloadStartTime: Long = 0L
 
     fun onUrlChanged(newUrl: String) {
         _uiState.update { it.copy(url = newUrl, videoInfo = null, infoLoading = false, infoError = null) }
@@ -106,8 +105,7 @@ class DownloadViewModel(
         val url = state.url
         if (url.isBlank()) return
         val processId = UUID.randomUUID().toString()
-        lastProgressTime = 0L
-        lastProgressValue = 0
+        downloadStartTime = 0L
         _uiState.update { it.copy(downloadState = DownloadState.Resolving) }
 
         viewModelScope.launch {
@@ -143,21 +141,15 @@ class DownloadViewModel(
                         }
                         WorkInfo.State.RUNNING -> {
                             val progress = info.progress.getInt(DownloadWorker.KEY_PROGRESS, 0)
+                            val bytes = info.progress.getLong(DownloadWorker.KEY_DOWNLOADED_BYTES, 0L)
                             val running = _uiState.value.downloadState as? DownloadState.Running
-                            if (running != null) {
-                                val now = System.currentTimeMillis()
-                                val elapsed = now - lastProgressTime
-                                val speedText = if (elapsed > 0 && lastProgressTime > 0) {
-                                    val progressDelta = progress - lastProgressValue
-                                    if (progressDelta > 0) {
-                                        val bytesPerSec = (progressDelta.toLong() * 1_000_000L * 1000L) / (elapsed * 100L)
-                                        formatSpeed(bytesPerSec)
-                                    } else running.speedText
-                                } else running.speedText
-                                if (progress != lastProgressValue || elapsed > 1000) {
-                                    lastProgressTime = now
-                                    lastProgressValue = progress
-                                }
+                            if (running != null && progress > 0) {
+                                if (downloadStartTime == 0L) downloadStartTime = System.currentTimeMillis()
+                                val elapsed = System.currentTimeMillis() - downloadStartTime
+                                val speedText = if (elapsed > 1000 && bytes > 0) {
+                                    val bytesPerSec = bytes * 1000 / elapsed
+                                    formatSpeed(bytesPerSec)
+                                } else ""
                                 _uiState.update { it.copy(downloadState = running.copy(progress = progress, speedText = speedText)) }
                             }
                         }

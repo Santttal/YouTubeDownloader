@@ -13,10 +13,16 @@ class NewPipeDownloader(
     private val client: OkHttpClient
 ) : Downloader() {
 
+    companion object {
+        // Desktop User-Agent to get full resolution streams (YouTube limits mobile clients)
+        const val USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:128.0) Gecko/20100101 Firefox/128.0"
+    }
+
     @Throws(IOException::class, ReCaptchaException::class)
     override fun execute(request: Request): Response {
         val builder = okhttp3.Request.Builder().url(request.url())
-        val seenHeaders = mutableSetOf<String>()
+            .header("User-Agent", USER_AGENT)
+        val seenHeaders = mutableSetOf("user-agent")
 
         request.headers()?.forEach { (name, values) ->
             values.forEach { value ->

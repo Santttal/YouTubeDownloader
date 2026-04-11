@@ -439,4 +439,177 @@ class NewPipeExtractorTest {
 
         assertTrue("Should find 1080p MPEG-4 stream", mp4_1080.isNotEmpty())
     }
+
+    @Test
+    fun `download 1080p with parallel chunked requests - speed comparison`() {
+        val testUrl = "https://youtu.be/KLuTLF3x9sA"
+        val info = StreamInfo.getInfo(testUrl)
+        println("Title: ${info.name}")
+
+        // Get 1080p MPEG-4 video-only stream
+        val videoStream = info.videoOnlyStreams
+            .filter { it.isUrl && it.format?.name == "MPEG-4" }
+            .filter { (it.getResolution()?.substringBefore("p")?.toIntOrNull() ?: 0) <= 1080 }
+            .maxByOrNull { it.getResolution()?.substringBefore("p")?.toIntOrNull() ?: 0 }
+
+        assertNotNull("Should have 1080p MPEG-4 stream", videoStream)
+        println("Stream: ${videoStream!!.getResolution()} | ${videoStream.format?.name}")
+
+        val videoUrl = videoStream.content!!
+        val UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:128.0) Gecko/20100101 Firefox/128.0"
+
+        val dlClient = OkHttpClient.Builder()
+            .connectTimeout(30, TimeUnit.SECONDS)
+            .readTimeout(60, TimeUnit.SECONDS)
+            .followRedirects(true)
+            .build()
+
+        // Get content length
+        val headReq = Request.Builder().url(videoUrl).head().header("User-Agent", UA).build()
+        val headResp = dlClient.newCall(headReq).execute()
+        val contentLength = headResp.header("Content-Length")?.toLongOrNull() ?: -1L
+        headResp.close()
+        println("Content-Length: $contentLength bytes (${contentLength / 1024 / 1024} MB)")
+
+        val downloadSize = minOf(10L * 1024 * 1024, contentLength) // Download 10MB or full file
+
+        // === Strategy 1: Single GET (baseline - likely throttled) ===
+        println("\n=== Strategy 1: Single GET ===")
+        val speed1 = measureDownloadSpeed(dlClient, videoUrl, UA, downloadSize) { url, start, end ->
+            Request.Builder().url(url).header("User-Agent", UA).build()
+        }
+        println("Single GET: $speed1 KB/s")
+
+        // === Strategy 2: Chunked 512KB Range requests (current approach) ===
+        println("\n=== Strategy 2: Chunked 512KB ===")
+        val speed2 = measureChunkedSpeed(dlClient, videoUrl, UA, downloadSize, 512 * 1024L, 1)
+        println("Chunked 512KB x1 thread: $speed2 KB/s")
+
+        // === Strategy 3: Chunked 2MB Range requests ===
+        println("\n=== Strategy 3: Chunked 2MB ===")
+        val speed3 = measureChunkedSpeed(dlClient, videoUrl, UA, downloadSize, 2 * 1024 * 1024L, 1)
+        println("Chunked 2MB x1 thread: $speed3 KB/s")
+
+        // === Strategy 4: Parallel 3 threads, 512KB chunks ===
+        println("\n=== Strategy 4: Parallel 3 threads ===")
+        val speed4 = measureParallelSpeed(dlClient, videoUrl, UA, downloadSize, 512 * 1024L, 3)
+        println("Parallel 3 threads: $speed4 KB/s")
+
+        // === Strategy 5: Parallel 6 threads, 1MB chunks ===
+        println("\n=== Strategy 5: Parallel 6 threads ===")
+        val speed5 = measureParallelSpeed(dlClient, videoUrl, UA, downloadSize, 1024 * 1024L, 6)
+        println("Parallel 6 threads: $speed5 KB/s")
+
+        println("\n=== SPEED COMPARISON ===")
+        println("Single GET:          $speed1 KB/s")
+        println("Chunked 512KB x1:    $speed2 KB/s")
+        println("Chunked 2MB x1:      $speed3 KB/s")
+        println("Parallel 3T x 512KB: $speed4 KB/s")
+        println("Parallel 6T x 1MB:   $speed5 KB/s")
+        println("========================")
+
+        val bestSpeed = maxOf(speed1, speed2, speed3, speed4, speed5)
+        assertTrue("Best speed should be > 100 KB/s, got $bestSpeed", bestSpeed > 100)
+    }
+
+    private fun measureDownloadSpeed(
+        client: OkHttpClient, url: String, ua: String, limit: Long,
+        requestBuilder: (String, Long, Long) -> Request
+    ): Long {
+        val req = requestBuilder(url, 0, limit - 1)
+        val start = System.currentTimeMillis()
+        var downloaded = 0L
+        val resp = client.newCall(req).execute()
+        resp.body?.byteStream()?.use { input ->
+            val buffer = ByteArray(65536)
+            var bytesRead: Int
+            while (input.read(buffer).also { bytesRead = it } != -1 && downloaded < limit) {
+                downloaded += bytesRead
+            }
+        }
+        resp.close()
+        val elapsed = System.currentTimeMillis() - start
+        return if (elapsed > 0) downloaded * 1000 / elapsed / 1024 else 0
+    }
+
+    private fun measureChunkedSpeed(
+        client: OkHttpClient, url: String, ua: String,
+        totalSize: Long, chunkSize: Long, threads: Int
+    ): Long {
+        val start = System.currentTimeMillis()
+        var downloaded = 0L
+
+        var offset = 0L
+        while (offset < totalSize) {
+            val end = (offset + chunkSize - 1).coerceAtMost(totalSize - 1)
+            val req = Request.Builder()
+                .url(url)
+                .header("User-Agent", ua)
+                .header("Accept", "*/*")
+                .header("Range", "bytes=$offset-$end")
+                .build()
+            val resp = client.newCall(req).execute()
+            resp.body?.byteStream()?.use { input ->
+                val buffer = ByteArray(65536)
+                var bytesRead: Int
+                while (input.read(buffer).also { bytesRead = it } != -1) {
+                    downloaded += bytesRead
+                }
+            }
+            resp.close()
+            offset = end + 1
+        }
+
+        val elapsed = System.currentTimeMillis() - start
+        return if (elapsed > 0) downloaded * 1000 / elapsed / 1024 else 0
+    }
+
+    private fun measureParallelSpeed(
+        client: OkHttpClient, url: String, ua: String,
+        totalSize: Long, chunkSize: Long, threadCount: Int
+    ): Long {
+        val start = System.currentTimeMillis()
+        val partSize = totalSize / threadCount
+        val threads = mutableListOf<Thread>()
+        val downloaded = java.util.concurrent.atomic.AtomicLong(0)
+
+        for (i in 0 until threadCount) {
+            val partStart = i * partSize
+            val partEnd = if (i == threadCount - 1) totalSize - 1 else (partStart + partSize - 1)
+
+            val thread = Thread {
+                var offset = partStart
+                while (offset <= partEnd) {
+                    val end = (offset + chunkSize - 1).coerceAtMost(partEnd)
+                    val req = Request.Builder()
+                        .url(url)
+                        .header("User-Agent", ua)
+                        .header("Accept", "*/*")
+                        .header("Range", "bytes=$offset-$end")
+                        .build()
+                    try {
+                        val resp = client.newCall(req).execute()
+                        resp.body?.byteStream()?.use { input ->
+                            val buffer = ByteArray(65536)
+                            var bytesRead: Int
+                            while (input.read(buffer).also { bytesRead = it } != -1) {
+                                downloaded.addAndGet(bytesRead.toLong())
+                            }
+                        }
+                        resp.close()
+                    } catch (e: Exception) {
+                        println("Thread $i error at offset $offset: ${e.message}")
+                    }
+                    offset = end + 1
+                }
+            }
+            threads.add(thread)
+            thread.start()
+        }
+
+        threads.forEach { it.join() }
+
+        val elapsed = System.currentTimeMillis() - start
+        return if (elapsed > 0) downloaded.get() * 1000 / elapsed / 1024 else 0
+    }
 }
